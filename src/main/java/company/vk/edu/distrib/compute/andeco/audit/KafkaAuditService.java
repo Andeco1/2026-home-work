@@ -109,9 +109,9 @@ public class KafkaAuditService implements AuditService {
                 }
             }
         } catch (WakeupException ignored) {
-            // normal shutdown
+            // shutdown
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new IllegalStateException(e);
         } finally {
             running.set(false);
         }
