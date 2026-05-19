@@ -6,6 +6,8 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -17,6 +19,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class KafkaAuditService implements AuditService {
+    private static final Logger log = LoggerFactory.getLogger(KafkaAuditService.class);
     private static final String TOPIC = "audit";
     private static final Duration POLL_TIMEOUT = Duration.ofMillis(200);
 
@@ -73,9 +76,6 @@ public class KafkaAuditService implements AuditService {
                 Thread.currentThread().interrupt();
             }
         }
-
-        consumer = null;
-        workerThread = null;
     }
 
     @Override
@@ -90,11 +90,22 @@ public class KafkaAuditService implements AuditService {
             while (running.get()) {
                 var records = currentConsumer.poll(POLL_TIMEOUT);
                 for (var record : records) {
-                    AuditEvent event = AuditEventCoderUtils.decode(record.value());
-                    store.append(event);
+                    String value = record.value();
+                    if (value == null || value.isBlank()) {
+                        log.warn("Skip empty audit record");
+                        continue;
+                    }
+
+                    try {
+                        AuditEvent event = AuditEventCoderUtils.decode(value);
+                        store.append(event);
+                    } catch (IllegalArgumentException e) {
+                        log.warn("Skip invalid audit record: '{}'", value, e);
+                    }
                 }
+
                 if (!records.isEmpty()) {
-                    currentConsumer.commitSync();
+                    consumer.commitSync();
                 }
             }
         } catch (WakeupException ignored) {

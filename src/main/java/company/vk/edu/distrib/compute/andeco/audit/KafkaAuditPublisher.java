@@ -59,9 +59,10 @@ final class KafkaAuditPublisher implements AutoCloseable {
                 current.send(record).get();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                log.warn("Audit send interrupted", e);
             } catch (ExecutionException e) {
-                log.warn("Audit send failed", e.getCause());
+                if (log.isWarnEnabled()) {
+                    log.warn("Audit send failed", e.getCause());
+                }
             }
         }
     }
@@ -105,7 +106,6 @@ final class KafkaAuditPublisher implements AutoCloseable {
         if (producer != null) {
             producer.flush();
             producer.close();
-            producer = null;
         }
     }
 }

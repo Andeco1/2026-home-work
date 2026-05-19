@@ -19,7 +19,8 @@ final class AuditEventCoderUtils {
 
     static AuditEvent decode(String line) {
         String[] parts = line.split("\t", 3);
-        if (parts.length != 3) {
+        int partsCount = 3;
+        if (parts.length != partsCount) {
             throw new IllegalArgumentException("Invalid audit record: " + line);
         }
         long timestamp = Long.parseLong(parts[0]);

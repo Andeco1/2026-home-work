@@ -3,7 +3,6 @@ package company.vk.edu.distrib.compute.andeco.audit;
 import com.sun.net.httpserver.HttpExchange;
 import company.vk.edu.distrib.compute.AuditEvent;
 import company.vk.edu.distrib.compute.Dao;
-import company.vk.edu.distrib.compute.andeco.Method;
 import company.vk.edu.distrib.compute.andeco.QueryUtil;
 
 import java.io.IOException;
@@ -24,31 +23,65 @@ public class AuditableEntityController {
 
     public void processRequest(HttpExchange exchange) throws IOException {
         try (exchange) {
-            if (!API_PATH.equals("") && !ENTITY_PATH.equals("") && !(API_PATH + ENTITY_PATH)
-                    .equals(exchange.getRequestURI().getPath())) {
-                exchange.sendResponseHeaders(HttpURLConnection.HTTP_NOT_FOUND, -1);
+            if (!isValidPath(exchange)) {
+                send(exchange, HttpURLConnection.HTTP_NOT_FOUND);
                 return;
             }
-            String id = QueryUtil.extractId(exchange.getRequestURI().getQuery());
-            auditPublisher.publish(new AuditEvent(exchange.getRequestMethod(), id, System.currentTimeMillis()));
-            if (id == null || id.isEmpty()) {
-                exchange.sendResponseHeaders(HttpURLConnection.HTTP_BAD_REQUEST, -1);
+
+            String id = extractAndAudit(exchange);
+            if (id == null) {
+                send(exchange, HttpURLConnection.HTTP_BAD_REQUEST);
                 return;
             }
-            Method method;
+
+            dispatchByMethod(exchange, id);
+        }
+    }
+
+    private boolean isValidPath(HttpExchange exchange) {
+        if (API_PATH.isEmpty() || ENTITY_PATH.isEmpty()) {
+            return true;
+        }
+        return (API_PATH + ENTITY_PATH)
+                .equals(exchange.getRequestURI().getPath());
+    }
+
+    private String extractAndAudit(HttpExchange exchange) {
+        String id = QueryUtil.extractId(exchange.getRequestURI().getQuery());
+        auditPublisher.publish(
+                new AuditEvent(exchange.getRequestMethod(), id, System.currentTimeMillis())
+        );
+        return (id == null || id.isEmpty()) ? null : id;
+    }
+
+    private void dispatchByMethod(HttpExchange exchange, String id) throws IOException {
+        Method method = Method.from(exchange.getRequestMethod());
+        if (method == null) {
+            send(exchange, HttpURLConnection.HTTP_BAD_METHOD);
+            return;
+        }
+
+        switch (method) {
+            case GET -> processGet(exchange, id);
+            case PUT -> processPut(exchange, id);
+            case DELETE -> processDelete(exchange, id);
+        }
+    }
+
+    enum Method {
+        GET, PUT, DELETE;
+
+        static Method from(String value) {
             try {
-                method = Method.valueOf(exchange.getRequestMethod());
+                return Method.valueOf(value);
             } catch (IllegalArgumentException e) {
-                exchange.sendResponseHeaders(HttpURLConnection.HTTP_BAD_METHOD, -1);
-                return;
-            }
-            switch (method) {
-                case GET -> processGet(exchange, id);
-                case PUT -> processPut(exchange, id);
-                case DELETE -> processDelete(exchange, id);
-                default -> exchange.sendResponseHeaders(HttpURLConnection.HTTP_BAD_METHOD, -1);
+                return null;
             }
         }
+    }
+
+    private void send(HttpExchange exchange, int status) throws IOException {
+        exchange.sendResponseHeaders(status, -1);
     }
 
     private void processGet(HttpExchange exchange, String id) throws IOException {
